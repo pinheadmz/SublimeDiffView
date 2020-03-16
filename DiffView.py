@@ -21,6 +21,7 @@ class DiffView(sublime_plugin.WindowCommand):
 
     def _prepare(self):
         """Some preparation common to all subclasses."""
+        self.open_views = []
         self.window.last_diff = self
         self.last_hunk_index = 0
         self.settings = sublime.load_settings('DiffView.sublime-settings')
@@ -245,20 +246,30 @@ class DiffView(sublime_plugin.WindowCommand):
         def highlight_when_ready(view, highlight_fn):
             while view.is_loading():
                 time.sleep(0.1)
-            highlight_fn(view, self.styles)
+            if view not in self.open_views:
+                highlight_fn(view, self.styles)
+                self.open_views.append(view)
 
         def open_preview(filespec, group, highlight_fn):
             view = self.window.open_file(
                 filespec,
-                flags=sublime.TRANSIENT |
-                sublime.ENCODED_POSITION |
+                flags=sublime.ENCODED_POSITION |
                 sublime.FORCE_GROUP,
                 group=group)
-            threading.Thread(target=highlight_when_ready, args=(view, highlight_fn)).start()
+            # threading.Thread(target=highlight_when_ready, args=(view, highlight_fn)).start()
+            highlight_when_ready(view, highlight_fn)
             return view
 
         self.right_view = open_preview(new_filespec, self.rhs_group, hunk.file_diff.add_new_regions)
         self.left_view = open_preview(old_filespec, self.lhs_group, hunk.file_diff.add_old_regions)
+        self.sync = True
+
+        def sync_scroll(l, r):
+            while self.sync:
+                l.set_viewport_position(r.viewport_position(), animate=True)
+                time.sleep(0.1)
+
+        threading.Thread(target=sync_scroll, args=(self.left_view, self.right_view)).start()
 
         self.window.focus_group(0)
         if self.view_style == "quick_panel":
@@ -277,6 +288,9 @@ class DiffView(sublime_plugin.WindowCommand):
 
     def reset_window(self):
         """Reset the window to its original state."""
+        self.sync = False
+        for view in self.open_views:
+            view.close()
         if self.view_style == "persistent_list":
             self.changes_list_view.close()
         self.window.set_layout(self.orig_layout)
@@ -284,6 +298,7 @@ class DiffView(sublime_plugin.WindowCommand):
         self.orig_view.sel().clear()
         self.orig_view.sel().add(self.orig_pos)
         self.orig_view.set_viewport_position(self.orig_viewport, animate=False)
+        self.orig_view.erase_phantoms("")
 
         # Stop listening for events
         ViewFinder.instance().stop()

@@ -1,4 +1,5 @@
 import re
+import sublime
 
 from .hunk_diff import HunkDiff, DummyHunkDiff
 from ..util.constants import Constants
@@ -71,12 +72,25 @@ class FileDiff(object):
             view: The view to add regions to.
             styles: A map of styles for the diff region types.
         """
-        if not hasattr(view, "old_regions"):
-            regions = {}
-            for sel in ["ADD", "MOD", "DEL"]:
-                regions[sel] = [r for h in self.hunks for r in h.get_old_regions(view) if h.hunk_type == sel]
-            self.add_regions(view, regions, styles)
-        view.old_regions = True
+        regions = {}
+        for sel in ["ADD", "MOD", "DEL"]:
+            regions[sel] = [r for h in self.hunks for r in h.get_old_regions(view) if h.hunk_type == sel]
+        self.add_regions(view, regions, styles)
+        for h in self.hunks:
+            if h.hunk_type == "ADD":
+                region = sublime.Region(
+                    view.text_point(h.old_line_start - 1, 0),
+                    view.text_point(h.old_line_start - 1, 0))
+                for _ in range(h.new_hunk_len):
+                    view.add_phantom("", region, "<br style='line-height:0.9rem'>", sublime.LAYOUT_BLOCK)
+            if h.hunk_type == "MOD":
+                diff = h.new_hunk_len - h.old_hunk_len
+                if diff > 0:
+                    region = sublime.Region(
+                        view.text_point(h.old_line_start + h.old_hunk_len - 2, 0),
+                        view.text_point(h.old_line_start + h.old_hunk_len - 2, 0))
+                    for _ in range(diff):
+                        view.add_phantom("", region, "<br style='line-height:0.9rem'>", sublime.LAYOUT_BLOCK)
 
     def add_new_regions(self, view, styles):
         """Add all highlighted regions to the view for this (new) file.
@@ -85,9 +99,22 @@ class FileDiff(object):
             view: The view to add regions to.
             styles: A map of styles for the diff region types.
         """
-        if not hasattr(view, "new_regions"):
-            regions = {}
-            for sel in ["ADD", "MOD", "DEL"]:
-                regions[sel] = [r for h in self.hunks for r in h.get_new_regions(view) if h.hunk_type == sel]
-            self.add_regions(view, regions, styles)
-        view.new_regions = True
+        regions = {}
+        for sel in ["ADD", "MOD", "DEL"]:
+            regions[sel] = [r for h in self.hunks for r in h.get_new_regions(view) if h.hunk_type == sel]
+        self.add_regions(view, regions, styles)
+        for h in self.hunks:
+            if h.hunk_type == "DEL":
+                region = sublime.Region(
+                    view.text_point(h.new_line_start - 1, 0),
+                    view.text_point(h.new_line_start - 1, 0))
+                for _ in range(h.old_hunk_len):
+                    view.add_phantom("", region, "<br style='line-height:0.9rem'>", sublime.LAYOUT_BLOCK)
+            if h.hunk_type == "MOD":
+                diff = h.old_hunk_len - h.new_hunk_len
+                if diff > 0:
+                    region = sublime.Region(
+                        view.text_point(h.new_line_start + h.new_hunk_len - 2, 0),
+                        view.text_point(h.new_line_start + h.new_hunk_len - 2, 0))
+                    for _ in range(diff):
+                        view.add_phantom("", region, "<br style='line-height:0.9rem'>", sublime.LAYOUT_BLOCK)
